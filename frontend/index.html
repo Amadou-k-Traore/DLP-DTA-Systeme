@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ollama Chat + Logger</title>
+  <meta name="color-scheme" content="dark light" />
+  <style>
+    :root{
+      --bg:#0b1020; --panel:rgba(255,255,255,.06); --panel2:rgba(255,255,255,.08); --stroke:rgba(255,255,255,.12);
+      --text:rgba(255,255,255,.92); --muted:rgba(255,255,255,.70); --muted2:rgba(255,255,255,.55);
+      --brand:#7c5cff; --brand2:#2dd4bf; --danger:#fb7185; --ok:#34d399; --warn:#fbbf24;
+      --r14:14px; --r16:16px; --r20:20px; --shadow:0 20px 60px rgba(0,0,0,.35); --shadow2:0 10px 30px rgba(0,0,0,.25);
+      --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+      --sans:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,"Helvetica Neue",Arial;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family:var(--sans); color:var(--text);
+      background:
+        radial-gradient(1200px 800px at 15% 15%, rgba(124,92,255,.22), transparent 55%),
+        radial-gradient(900px 700px at 80% 10%, rgba(45,212,191,.18), transparent 55%),
+        radial-gradient(1100px 800px at 50% 90%, rgba(99,102,241,.12), transparent 60%),
+        var(--bg);
+      overflow:hidden;
+    }
+    .app{
+      height:100%; max-width:1400px; margin:0 auto; padding:18px;
+      display:grid; grid-template-columns:340px 1fr; gap:18px;
+    }
+    .glass{
+      background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.05));
+      border:1px solid var(--stroke); border-radius:var(--r20);
+      box-shadow:var(--shadow); backdrop-filter: blur(14px);
+      overflow:hidden; min-height:0;
+    }
+
+    /* Sidebar */
+    .sidebar{display:flex; flex-direction:column}
+    .brandbar{
+      padding:18px; border-bottom:1px solid var(--stroke);
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+    }
+    .logo{display:flex; align-items:center; gap:12px; min-width:0}
+    .mark{
+      width:42px;height:42px;border-radius:16px;
+      background:
+        radial-gradient(14px 14px at 30% 30%, rgba(255,255,255,.9), rgba(255,255,255,0) 60%),
+        linear-gradient(135deg, rgba(124,92,255,1), rgba(45,212,191,1));
+      border:1px solid rgba(255,255,255,.15);
+      box-shadow:0 12px 28px rgba(124,92,255,.25);
+      flex:0 0 auto;
+    }
+    .brandtext{display:flex;flex-direction:column;min-width:0}
+    .brandtext strong{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .brandtext span{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .pill{
+      padding:7px 10px;border-radius:999px;border:1px solid var(--stroke);
+      background:rgba(255,255,255,.06);color:var(--muted);font-size:12px;
+      display:inline-flex;align-items:center;gap:8px;user-select:none;
+    }
+    .dot{width:8px;height:8px;border-radius:999px;background:var(--danger);box-shadow:0 0 0 4px rgba(251,113,133,.15)}
+    .dot.ok{background:var(--ok);box-shadow:0 0 0 4px rgba(52,211,153,.15)}
+    .dot.warn{background:var(--warn);box-shadow:0 0 0 4px rgba(251,191,36,.15)}
+    .sidecontent{padding:16px 18px 18px;display:flex;flex-direction:column;gap:14px;min-height:0}
+
+    .card{
+      border:1px solid var(--stroke);border-radius:var(--r16);
+      background:rgba(255,255,255,.06);padding:14px;box-shadow:var(--shadow2);
+    }
+    .card h3{margin:0 0 10px;font-size:13px;color:var(--muted);font-weight:700;letter-spacing:.2px;text-transform:uppercase}
+    label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+    .field{
+      width:100%; padding:12px; border-radius:12px;
+      border:1px solid rgba(255,255,255,.12);
+      background:rgba(10,14,26,.55); color:var(--text); outline:none;
+      transition:border-color .15s ease, background .15s ease, transform .15s ease;
+    }
+    .field:focus{border-color:rgba(124,92,255,.8);background:rgba(10,14,26,.72)}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .btnrow{display:flex;gap:10px;justify-content:flex-end;margin-top:10px}
+    .btn{
+      padding:11px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.14);
+      background:rgba(255,255,255,.06);color:var(--text);font-weight:700;cursor:pointer;
+      transition:transform .12s ease, background .12s ease;
+      user-select:none;
+      display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    }
+    .btn:hover{transform:translateY(-1px);background:rgba(255,255,255,.09)}
+    .btn:disabled{opacity:.55;cursor:not-allowed;transform:none}
+    .btn.primary{
+      background:linear-gradient(135deg, rgba(124,92,255,.95), rgba(45,212,191,.75));
+      border-color:rgba(255,255,255,.22);
+      box-shadow:0 12px 30px rgba(124,92,255,.18);
+    }
+    .btn.ghost{background:transparent}
+
+    .helper{font-size:12px;color:var(--muted2);line-height:1.45;margin-top:10px}
+    .helper code{
+      font-family:var(--mono);font-size:11px;padding:2px 6px;border-radius:8px;
+      border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:rgba(255,255,255,.85)
+    }
+
+    .toast{
+      display:none; border-radius:14px; padding:10px 12px; font-size:13px; box-shadow:var(--shadow2);
+      border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.07);
+    }
+    .toast.show{display:block}
+    .toast.ok{border-color: rgba(52,211,153,.35)}
+    .toast.warn{border-color: rgba(251,191,36,.35)}
+    .toast.error{border-color: rgba(251,113,133,.35)}
+
+    /* Main */
+    .main{display:flex; flex-direction:column}
+    .topbar{
+      padding:16px 18px; border-bottom:1px solid var(--stroke);
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+    }
+    .topbar h1{margin:0;font-size:16px}
+    .sub{font-size:12px;color:var(--muted);margin-top:2px}
+    .kbd{
+      font-family:var(--mono);font-size:11px;padding:7px 10px;border-radius:10px;
+      border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);
+      color:rgba(255,255,255,.85);user-select:none;
+    }
+    .chat{padding:18px;flex:1 1 auto;overflow:auto;min-height:0}
+    .msgrow{display:flex;gap:12px;margin:10px 0 14px;align-items:flex-end}
+    .msgrow.me{justify-content:flex-end}
+    .avatar{
+      width:34px;height:34px;border-radius:12px;border:1px solid rgba(255,255,255,.14);
+      background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;
+      font-size:12px;color:rgba(255,255,255,.8);user-select:none;flex:0 0 auto;
+    }
+    .msgrow.me .avatar{order:2;background:rgba(124,92,255,.20);border-color:rgba(124,92,255,.35)}
+    .bubble{
+      max-width:760px;padding:12px 14px;border-radius:16px;border:1px solid rgba(255,255,255,.12);
+      background:rgba(10,14,26,.50);box-shadow:0 10px 25px rgba(0,0,0,.18);
+      line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;
+    }
+    .msgrow.me .bubble{
+      background:linear-gradient(135deg, rgba(124,92,255,.30), rgba(45,212,191,.18));
+      border-color:rgba(124,92,255,.35);
+    }
+    .meta{font-size:11px;color:var(--muted2);margin-top:6px;display:flex;gap:10px;align-items:center}
+    .tag{font-family:var(--mono);padding:2px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05)}
+    .composer{border-top:1px solid var(--stroke);padding:14px 18px 18px;background:rgba(0,0,0,.08)}
+    .composer-grid{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end}
+    textarea{resize:none;min-height:52px;max-height:180px}
+
+    /* attachments bar */
+    .attachbar{
+      display:flex; align-items:center; gap:10px;
+      margin-bottom:10px;
+    }
+    .iconbtn{
+      width:44px; height:44px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.14);
+      background:rgba(255,255,255,.06);
+      cursor:pointer;
+      display:inline-flex; align-items:center; justify-content:center;
+      transition:transform .12s ease, background .12s ease;
+      user-select:none;
+    }
+    .iconbtn:hover{transform:translateY(-1px); background:rgba(255,255,255,.09)}
+    .iconbtn:disabled{opacity:.55; cursor:not-allowed; transform:none}
+    .badge{
+      display:none;
+      align-items:center; gap:10px;
+      padding:8px 10px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.14);
+      background:rgba(10,14,26,.45);
+      color:rgba(255,255,255,.88);
+      max-width:100%;
+      overflow:hidden;
+    }
+    .badge.show{display:inline-flex}
+    .badge .name{
+      font-size:12px; color:rgba(255,255,255,.82);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+      max-width:520px;
+    }
+    .badge .x{
+      border:none; background:transparent; color:rgba(255,255,255,.75);
+      cursor:pointer; font-size:14px; line-height:1;
+      padding:4px 6px; border-radius:10px;
+    }
+    .badge .x:hover{background:rgba(255,255,255,.08)}
+
+    .hint{margin-top:10px;font-size:12px;color:var(--muted2);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .spinner{
+      width:14px;height:14px;border-radius:999px;border:2px solid rgba(255,255,255,.35);
+      border-top-color:transparent;animation:spin .85s linear infinite;display:none;margin-right:8px;
+    }
+    .spinner.show{display:inline-block}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @media (max-width:980px){
+      body{overflow:auto}
+      .app{grid-template-columns:1fr}
+      .row{grid-template-columns:1fr}
+      .main{min-height:74vh}
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+
+    <aside class="glass sidebar">
+      <div class="brandbar">
+        <div class="logo">
+          <div class="mark"></div>
+          <div class="brandtext">
+            <strong>Ollama Chat</strong>
+            <span>Logger JSONL prêt pour DTA/Wazuh</span>
+          </div>
+        </div>
+        <div class="pill" title="État de connexion">
+          <span class="dot" id="connDot"></span>
+          <span id="connText">Déconnecté</span>
+        </div>
+      </div>
+
+      <div class="sidecontent">
+        <div class="toast" id="toast"></div>
+
+        <div class="card">
+          <h3>État API</h3>
+          <div class="helper" style="margin-top:0">
+            Backend: <code id="apiBase"></code><br>
+            Health: <code id="apiHealth">/api/health</code><br>
+            Modèle: <code id="apiModel">—</code>
+          </div>
+          <div class="btnrow" style="justify-content:space-between">
+            <button class="btn" id="healthBtn">Tester /health</button>
+            <span class="kbd" id="healthBadge">—</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Connexion</h3>
+          <div class="row">
+            <div>
+              <label for="username">Utilisateur</label>
+              <input class="field" id="username" autocomplete="username" placeholder="amadou / alice / bob">
+            </div>
+            <div>
+              <label for="password">Mot de passe</label>
+              <input class="field" id="password" type="password" autocomplete="current-password" placeholder="••••••••••">
+            </div>
+          </div>
+          <div class="btnrow">
+            <button class="btn ghost" id="logoutBtn" disabled>Se déconnecter</button>
+            <button class="btn primary" id="loginBtn">Se connecter</button>
+          </div>
+          <div class="helper">
+            Chaque message utilisateur est loggé côté serveur (JSONL) pour ton DTA.
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Contrôles</h3>
+          <div class="btnrow" style="justify-content:space-between;margin-top:0">
+            <button class="btn" id="clearBtn">Effacer chat</button>
+            <span class="kbd">Enter</span>
+          </div>
+          <div class="helper">
+            <b>Shift+Enter</b> : nouvelle ligne. Historique local limité (contexte).
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="glass main">
+      <div class="topbar">
+        <div>
+          <h1>Conversation</h1>
+          <div class="sub" id="subTitle">Connecte-toi pour envoyer des messages.</div>
+        </div>
+        <span class="kbd" id="meLabel">—</span>
+      </div>
+
+      <section class="chat" id="chatBox" aria-live="polite"></section>
+
+      <section class="composer">
+        <!-- Attachments -->
+        <div class="attachbar">
+          <input id="fileImage" type="file" accept="image/*" hidden />
+          <input id="fileAudio" type="file" accept="audio/*" hidden />
+
+          <button class="iconbtn" id="btnImage" type="button" title="Joindre une image" disabled>📷</button>
+          <button class="iconbtn" id="btnAudio" type="button" title="Joindre un audio" disabled>🎙</button>
+
+          <div class="badge" id="fileBadge" title="Fichier attaché">
+            <span class="tag" id="fileKind">—</span>
+            <span class="name" id="fileName">—</span>
+            <button class="x" id="fileClear" type="button" title="Retirer">✕</button>
+          </div>
+        </div>
+
+        <div class="composer-grid">
+          <textarea class="field" id="text" rows="2" placeholder="Écris ici…"></textarea>
+          <button class="btn primary" id="sendBtn" disabled>
+            <span class="spinner" id="spin"></span>
+            Envoyer
+          </button>
+        </div>
+
+        <div class="hint">
+          <span id="statusText">—</span>
+          <div class="meta">
+            <span class="tag">logger → JSONL</span>
+            <span class="tag">DTA → Wazuh</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+  </div>
+
+<script>
+  // ✅ Mets ici l'URL du backend FastAPI
+  const API = "http://127.0.0.1:8000/api";
+
+  const chatBox = document.getElementById("chatBox");
+  const sendBtn = document.getElementById("sendBtn");
+  const loginBtn = document.getElementById("loginBtn");
+  const logoutBtn = document.getElementById("logoutBtn");
+  const clearBtn = document.getElementById("clearBtn");
+  const toast = document.getElementById("toast");
+  const spin = document.getElementById("spin");
+
+  const connDot = document.getElementById("connDot");
+  const connText = document.getElementById("connText");
+  const meLabel = document.getElementById("meLabel");
+  const subTitle = document.getElementById("subTitle");
+  const statusText = document.getElementById("statusText");
+
+  const apiBase = document.getElementById("apiBase");
+  const apiModel = document.getElementById("apiModel");
+  const healthBtn = document.getElementById("healthBtn");
+  const healthBadge = document.getElementById("healthBadge");
+
+  // attachments
+  const btnImage = document.getElementById("btnImage");
+  const btnAudio = document.getElementById("btnAudio");
+  const fileImage = document.getElementById("fileImage");
+  const fileAudio = document.getElementById("fileAudio");
+  const fileBadge = document.getElementById("fileBadge");
+  const fileKind = document.getElementById("fileKind");
+  const fileName = document.getElementById("fileName");
+  const fileClear = document.getElementById("fileClear");
+
+  apiBase.textContent = API;
+
+  let token = localStorage.getItem("token") || "";
+  let history = JSON.parse(localStorage.getItem("history") || "[]");
+
+  // current attachment
+  let attached = null; // { kind: "image"|"audio", file: File }
+
+  function esc(s){
+    return String(s).replace(/[&<>"']/g, ch => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[ch]));
+  }
+
+  function showToast(msg, kind=""){
+    toast.className = "toast show" + (kind ? (" " + kind) : "");
+    toast.textContent = msg;
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => { toast.className="toast"; toast.textContent=""; }, 3500);
+  }
+
+  function setConnected(ok, username=""){
+    connDot.className = "dot" + (ok ? " ok" : "");
+    connText.textContent = ok ? "Connecté" : "Déconnecté";
+    meLabel.textContent = ok ? username : "—";
+    sendBtn.disabled = !ok;
+    logoutBtn.disabled = !ok;
+    btnImage.disabled = !ok;
+    btnAudio.disabled = !ok;
+
+    subTitle.textContent = ok
+      ? "Texte + pièces jointes : tout est loggé côté serveur puis analysé par DTA."
+      : "Connecte-toi pour envoyer des messages.";
+
+    statusText.textContent = ok ? "Prêt." : "Non connecté.";
+
+    if (!ok) clearAttachment();
+  }
+
+  function setLoading(on){
+    spin.classList.toggle("show", on);
+    sendBtn.disabled = on || !token;
+    loginBtn.disabled = on;
+    logoutBtn.disabled = on || !token;
+    btnImage.disabled = on || !token;
+    btnAudio.disabled = on || !token;
+  }
+
+  function push(role, content, meta=""){
+    const row = document.createElement("div");
+    row.className = "msgrow " + (role === "user" ? "me" : "bot");
+
+    const avatar = document.createElement("div");
+    avatar.className = "avatar";
+    avatar.textContent = role === "user" ? "ME" : "AI";
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = content;
+
+    if (meta){
+      const m = document.createElement("div");
+      m.className = "meta";
+      m.innerHTML = `<span class="tag">${esc(meta)}</span>`;
+      bubble.appendChild(m);
+    }
+
+    if (role === "user"){
+      row.appendChild(bubble);
+      row.appendChild(avatar);
+    } else {
+      row.appendChild(avatar);
+      row.appendChild(bubble);
+    }
+
+    chatBox.appendChild(row);
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
+
+  function renderHistory(){
+    chatBox.innerHTML = "";
+    for (const m of history){
+      if (m.role === "user") push("user", m.content);
+      else if (m.role === "assistant") push("assistant", m.content);
+    }
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
+
+  async function apiMe(){
+    const r = await fetch(`${API}/me`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) throw new Error("me failed");
+    return r.json();
+  }
+
+  async function checkSession(){
+    if (!token){ setConnected(false); return; }
+    try{
+      const me = await apiMe();
+      setConnected(true, me.username);
+      showToast(`Session active: ${me.username}`, "ok");
+    }catch{
+      token = "";
+      localStorage.removeItem("token");
+      setConnected(false);
+    }
+  }
+
+  async function checkHealth(){
+    try{
+      const r = await fetch(`${API}/health`);
+      if (!r.ok) throw new Error("health failed");
+      const data = await r.json();
+      apiModel.textContent = data.model || "—";
+      healthBadge.textContent = "OK";
+      showToast("Backend OK (health).", "ok");
+      return true;
+    }catch{
+      apiModel.textContent = "—";
+      healthBadge.textContent = "OFF";
+      showToast("Backend injoignable. Lance uvicorn.", "error");
+      return false;
+    }
+  }
+
+  function setAttachment(kind, file){
+    attached = { kind, file };
+    fileKind.textContent = kind === "image" ? "IMAGE" : "AUDIO";
+    fileName.textContent = file.name;
+    fileBadge.classList.add("show");
+    showToast(`${kind === "image" ? "Image" : "Audio"} attaché : ${file.name}`, "ok");
+  }
+
+  function clearAttachment(){
+    attached = null;
+    fileImage.value = "";
+    fileAudio.value = "";
+    fileBadge.classList.remove("show");
+  }
+
+  async function uploadAttachment(){
+    if (!attached) return null;
+
+    const endpoint = attached.kind === "image" ? "upload/image" : "upload/audio";
+    const fd = new FormData();
+    fd.append("file", attached.file);
+
+    const r = await fetch(`${API}/${endpoint}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd
+    });
+
+    if (r.status === 403){
+      const err = await r.json().catch(() => ({}));
+      const detail = err.detail ? `: ${err.detail}` : "";
+      showToast(`Compte restreint${detail}`, "error");
+      sendBtn.disabled = true;
+      btnImage.disabled = true;
+      btnAudio.disabled = true;
+      statusText.textContent = "Compte restreint (quarantine).";
+      throw new Error("quarantine");
+    }
+
+    if (!r.ok){
+      const err = await r.json().catch(() => ({}));
+      const detail = err.detail ? `: ${err.detail}` : "";
+      throw new Error(`upload failed${detail}`);
+    }
+
+    return r.json(); // {status, session_id, path}
+  }
+
+  healthBtn.addEventListener("click", checkHealth);
+
+  loginBtn.addEventListener("click", async () => {
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+
+    if (!username || !password){
+      showToast("Entre un utilisateur et un mot de passe.", "warn");
+      return;
+    }
+
+    setLoading(true);
+    try{
+      const r = await fetch(`${API}/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      });
+
+      if (!r.ok){
+        showToast("Identifiants invalides.", "error");
+        return;
+      }
+
+      const data = await r.json();
+      token = data.access_token;
+      localStorage.setItem("token", token);
+
+      const me = await apiMe();
+      setConnected(true, me.username);
+      showToast(`Connecté: ${me.username}`, "ok");
+    }catch{
+      showToast("Erreur réseau (backend non démarré ?).", "error");
+    }finally{
+      setLoading(false);
+    }
+  });
+
+  logoutBtn.addEventListener("click", () => {
+    token = "";
+    localStorage.removeItem("token");
+    setConnected(false);
+    showToast("Déconnecté.", "ok");
+  });
+
+  clearBtn.addEventListener("click", () => {
+    history = [];
+    localStorage.setItem("history", JSON.stringify(history));
+    renderHistory();
+    showToast("Historique effacé.", "ok");
+  });
+
+  btnImage.addEventListener("click", () => fileImage.click());
+  btnAudio.addEventListener("click", () => fileAudio.click());
+
+  fileImage.addEventListener("change", () => {
+    const f = fileImage.files && fileImage.files[0];
+    if (!f) return;
+    clearAttachment();
+    setAttachment("image", f);
+  });
+
+  fileAudio.addEventListener("change", () => {
+    const f = fileAudio.files && fileAudio.files[0];
+    if (!f) return;
+    clearAttachment();
+    setAttachment("audio", f);
+  });
+
+  fileClear.addEventListener("click", clearAttachment);
+
+  sendBtn.addEventListener("click", async () => {
+    const textArea = document.getElementById("text");
+    const text = textArea.value.trim();
+
+    if (!text && !attached){
+      showToast("Écris un message ou joins un fichier.", "warn");
+      return;
+    }
+
+    // display user message locally
+    if (text) {
+      push("user", text);
+      history.push({ role: "user", content: text });
+      if (history.length > 40) history = history.slice(-40);
+      localStorage.setItem("history", JSON.stringify(history));
+      textArea.value = "";
+    } else {
+      push("user", attached.kind === "image" ? "(image envoyée)" : "(audio envoyé)");
+    }
+
+    setLoading(true);
+    statusText.textContent = "Envoi…";
+
+    try{
+      // 1) upload attachment first (if any)
+      if (attached){
+        const info = await uploadAttachment();
+        // record as part of local history (lightweight)
+        history.push({ role: "user", content: attached.kind === "image" ? `[image] ${attached.file.name}` : `[audio] ${attached.file.name}` });
+        if (history.length > 40) history = history.slice(-40);
+        localStorage.setItem("history", JSON.stringify(history));
+        clearAttachment();
+      }
+
+      // 2) send text to chat (if any)
+      if (text){
+        const r = await fetch(`${API}/chat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ text, history })
+        });
+
+        if (r.status === 403){
+          const err = await r.json().catch(() => ({}));
+          const detail = err.detail ? `: ${err.detail}` : "";
+          push("assistant", `(Accès refusé${detail})`);
+          showToast(`Compte restreint${detail}`, "error");
+          sendBtn.disabled = true;
+          btnImage.disabled = true;
+          btnAudio.disabled = true;
+          statusText.textContent = "Compte restreint (quarantine).";
+          return;
+        }
+
+        if (!r.ok){
+          const err = await r.json().catch(() => ({}));
+          const detail = err.detail ? `: ${err.detail}` : "";
+          push("assistant", `(Erreur serveur${detail})`);
+          showToast(`Erreur serveur${detail}`, "error");
+          return;
+        }
+
+        const data = await r.json();
+        push("assistant", data.response, `req: ${data.request_id.slice(0,8)}`);
+        history.push({ role: "assistant", content: data.response });
+        if (history.length > 40) history = history.slice(-40);
+        localStorage.setItem("history", JSON.stringify(history));
+        statusText.textContent = "Réponse reçue.";
+      } else {
+        statusText.textContent = "Fichier envoyé.";
+      }
+
+    }catch(e){
+      if (String(e).includes("quarantine")) return;
+      push("assistant", "(Backend injoignable)");
+      showToast("Erreur réseau (backend non démarré ?).", "error");
+    }finally{
+      setLoading(false);
+      statusText.textContent = token ? "Prêt." : "Non connecté.";
+    }
+  });
+
+  document.getElementById("text").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey){
+      e.preventDefault();
+      sendBtn.click();
+    }
+  });
+
+  renderHistory();
+  checkHealth();
+  checkSession();
+</script>
+</body>
+</html>
